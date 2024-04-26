@@ -71,9 +71,11 @@ class DataSource(QtCore.QObject):
             'stateEstimate.roll': 'float',
             'stateEstimate.pitch': 'float',
             'stateEstimate.yaw': 'float',
+            'lighthouse.bsReceive': 'uint16_t'
         }
 
         lg_stab = LogConfig(name='Position', period_in_ms=100)
+
         for key in lg_vars:
             #add each variable to the logconfig
             lg_stab.add_variable(key, lg_vars[key])
@@ -89,12 +91,22 @@ class DataSource(QtCore.QObject):
                 _array = np.empty(0)
                 # turn the 6 log entries into a 1 x 6 np array
                 for key in data:
-                    #print(data[key])
-                    _array = np.concatenate((_array,[data[key]]))
+                    if key == 'lighthouse.bsReceive':
+                        lighthouses_in_view = data[key]
+                        pass
+                    else:
+                        _array = np.concatenate((_array,[data[key]]))
                 _dict[uri] = _array
-                self.new_data.emit(_dict)
-                # the function passed in below is the one that triggers the timer.
-                QtCore.QTimer.singleShot(0,self.log_sync)
+
+                # throw out values when less than two light houses can be seen.
+                if lighthouses_in_view < 2:
+                    #uri_mesh_dict[uri].setVisible(False)
+                    pass
+                else:
+                    #uri_mesh_dict[uri].setVisible(True)
+                    self.new_data.emit(_dict)
+                    # the function passed in below is the one that triggers the timer.
+                    QtCore.QTimer.singleShot(0,self.log_sync)
 
                 if time.time() > endTime or self._should_end is True:
                     break
@@ -132,6 +144,12 @@ def _process_collected_data(_dict):
     new_pos = _dict[uri]
     delta_transform = np.subtract(new_pos, grid_pos)
 
+    # for x in delta_transform:
+    #     if x > 10:
+    #         return np.zeros(6)
+    #     else:
+    #         return delta_transform.copy()
+    # print(delta_transform)
     return delta_transform.copy()
 
 def updatePlot(pos_dict):
@@ -142,11 +160,11 @@ def updatePlot(pos_dict):
         uri = key
     mesh_object = uri_mesh_dict[uri]
 
-    mesh_object.translate(delta_t[0],delta_t[1],delta_t[2]-100)
+    mesh_object.translate(delta_t[0],delta_t[1],delta_t[2])
     # rotate(angle, x, y, z, local=False
-    mesh_object.rotate(delta_t[3],1,0,0,local=True)
-    mesh_object.rotate(delta_t[4],0,1,0,local=True)
-    mesh_object.rotate(delta_t[5],0,0,1,local=True)
+    #mesh_object.rotate(delta_t[3],1,0,0,local=True)
+    #mesh_object.rotate(delta_t[4],0,1,0,local=True)
+    #mesh_object.rotate(delta_t[5],0,0,1,local=True)
 
 if __name__ == '__main__':
     uri_mesh_dict = make_uri_mesh_dict(uris)
