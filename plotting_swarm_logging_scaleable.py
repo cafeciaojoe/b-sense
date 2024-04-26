@@ -43,9 +43,6 @@ def make_uri_mesh_dict(uris):
         w.addItem(_dict[uris[i]])
         # this line is for debugging, just to check that they have been added.
         _dict[uris[i]].translate(i,i,i)
-        _dict[uris[i]].rotate(10, 1,0,0)
-        _dict[uris[i]].rotate(20, 0,1,0)
-        _dict[uris[i]].rotate(30, 0,0,1)
         #print(_dict)
     return _dict
 
@@ -83,7 +80,7 @@ class DataSource(QtCore.QObject):
 
         _dict = {}
         with SyncLogger(scf, lg_stab) as logger:
-            endTime = time.time() + 10
+            endTime = time.time() + 1000
             for log_entry in logger:
                 #package the data into a dictionary of arrays, send dict to other thread
                 uri = scf.cf.link_uri
@@ -109,12 +106,14 @@ class DataSource(QtCore.QObject):
 
 
 def _process_collected_data(_dict):
-    # TODO unpack (maybe not even) arrays, copy, perform operations, send copy
-    # work out which uri you are working with
+    # work out which uri you are working with and use it to retrieve the mesh object
     for key in _dict:
         uri = key
     mesh_object = uri_mesh_dict[uri]
-    # retrieve the current grid position of the mesh object, returns a 4x4 array which includes,
+
+    # retrieve the current grid position of the mesh object,
+
+    # returns a 4x4 array which includes,
     # 3x3 rotation matrix (in the top left of the matrix) and x,y,z, position (in the last column)
     grid_4x4 = pg.transformToArray(mesh_object.transform())
     # slice the 3x3 out of the 4x4
@@ -123,26 +122,31 @@ def _process_collected_data(_dict):
     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Rotation.html
     # TODO this seems dumb is there a better way?
     grid_rot_3x3 = R.from_matrix(grid_3x3)
-    grid_rot_euler = grid_rot_3x3.as_euler('xyz', degrees=True)
-    print(grid_rot_euler)
+    grid_euler = grid_rot_3x3.as_euler('xyz', degrees=True)
+    # slice the 1x3 xyz position matrix out of the 4x4
+    grid_xyz = grid_4x4[0:3, 3]
+    # note the arays passed into np.concatenate need to be in a list or a tuple to work.
+    grid_pos = np.concatenate([grid_xyz,grid_euler])
 
+    # retrieve the logged position of the marker and subtract the current grid pos
+    new_pos = _dict[uri]
+    delta_transform = np.subtract(new_pos, grid_pos)
 
-
-
-    # surely
-
-
-
-    #print(uri_mesh_dict[uri])
-
-    return #something.copy()
+    return delta_transform.copy()
 
 def updatePlot(pos_dict):
-    trans_dict = _process_collected_data(pos_dict)
+    delta_t = _process_collected_data(pos_dict)
     # TODO use uri_pos_dict to reference uri_mesh dict and update graph.
-    #uri=pos_dict.get("uri")
-    #m1.translate(pos_d[0], pos_d[1], pos_d[2])
-    # sp1.setData(pos=pos)
+    # extract the uri from pos_dict
+    for key in pos_dict:
+        uri = key
+    mesh_object = uri_mesh_dict[uri]
+
+    mesh_object.translate(delta_t[0],delta_t[1],delta_t[2]-100)
+    # rotate(angle, x, y, z, local=False
+    mesh_object.rotate(delta_t[3],1,0,0,local=True)
+    mesh_object.rotate(delta_t[4],0,1,0,local=True)
+    mesh_object.rotate(delta_t[5],0,0,1,local=True)
 
 if __name__ == '__main__':
     uri_mesh_dict = make_uri_mesh_dict(uris)
