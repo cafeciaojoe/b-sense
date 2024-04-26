@@ -1,5 +1,6 @@
 import time
 import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 import cflib.crtp
 from cflib.crazyflie.swarm import CachedCfFactory
@@ -42,6 +43,9 @@ def make_uri_mesh_dict(uris):
         w.addItem(_dict[uris[i]])
         # this line is for debugging, just to check that they have been added.
         _dict[uris[i]].translate(i,i,i)
+        _dict[uris[i]].rotate(10, 1,0,0)
+        _dict[uris[i]].rotate(20, 0,1,0)
+        _dict[uris[i]].rotate(30, 0,0,1)
         #print(_dict)
     return _dict
 
@@ -98,38 +102,44 @@ class DataSource(QtCore.QObject):
                 if time.time() > endTime or self._should_end is True:
                     break
 
-    def _process_marker_data(self, count, collected_data):
-        # TODO unpack (maybe not even) arrays, copy, perform operations, send copy
-        pos = collected_data['radio://0/80/2M/E7E7E7E703']
-        xn = pos.x
-        yn = pos.y
-        zn = pos.z
-        new_pos = np.array([xn, yn, zn])
-
-        current_pos_4x4 = pg.transformToArray(m1.transform())
-        xc = current_pos_4x4[(0, 3)]
-        yc = current_pos_4x4[(1, 3)]
-        zc = current_pos_4x4[(2, 3)]
-        current_pos = np.array([xc, yc, zc])
-
-        pos_d = np.subtract(new_pos, current_pos)
-
-        self._marker_data[0] = pos_d[0]
-        self._marker_data[1] = pos_d[1]
-        self._marker_data[2] = pos_d[2]
-
-        return self._marker_data.copy()
-
     def stop_data(self):
         print("Data source is quitting...")
         self._should_end = True
 
+
+
+def _process_collected_data(_dict):
+    # TODO unpack (maybe not even) arrays, copy, perform operations, send copy
+    # work out which uri you are working with
+    for key in _dict:
+        uri = key
+    mesh_object = uri_mesh_dict[uri]
+    # retrieve the current grid position of the mesh object, returns a 4x4 array which includes,
+    # 3x3 rotation matrix (in the top left of the matrix) and x,y,z, position (in the last column)
+    grid_4x4 = pg.transformToArray(mesh_object.transform())
+    # slice the 3x3 out of the 4x4
+    grid_3x3 = grid_4x4[0:3,0:3]
+    # use scipy to turn the 3x3 back into Euler
+    # https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Rotation.html
+    # TODO this seems dumb is there a better way?
+    grid_rot_3x3 = R.from_matrix(grid_3x3)
+    grid_rot_euler = grid_rot_3x3.as_euler('xyz', degrees=True)
+    print(grid_rot_euler)
+
+
+
+
+    # surely
+
+
+
+    #print(uri_mesh_dict[uri])
+
+    return #something.copy()
+
 def updatePlot(pos_dict):
+    trans_dict = _process_collected_data(pos_dict)
     # TODO use uri_pos_dict to reference uri_mesh dict and update graph.
-    print(pos_dict)
-
-
-
     #uri=pos_dict.get("uri")
     #m1.translate(pos_d[0], pos_d[1], pos_d[2])
     # sp1.setData(pos=pos)
