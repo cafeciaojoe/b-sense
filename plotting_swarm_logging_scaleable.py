@@ -42,6 +42,7 @@ def make_uri_mesh_dict(uris):
         w.addItem(_dict[uris[i]])
         # this line is for debugging, just to check that they have been added.
         _dict[uris[i]].translate(i,i,i)
+        #print(_dict)
     return _dict
 
 class DataSource(QtCore.QObject):
@@ -54,13 +55,13 @@ class DataSource(QtCore.QObject):
         self._should_end = False
         self._count = 0
         self._num_iters = num_iterations
-        self._marker_data = [0,0,0]
 
     def run_data_collection(self):
-        swarm.parallel(self.log_sync)
+        swarm.parallel_safe(self.log_sync)
         print("Data source finishing")
         self.finished.emit()
 
+    # there is one log_sync function running for every crazyflie.
     def log_sync(self, scf):
         lg_vars = {
             'stateEstimate.x': 'float',
@@ -73,27 +74,28 @@ class DataSource(QtCore.QObject):
 
         lg_stab = LogConfig(name='Position', period_in_ms=100)
         for key in lg_vars:
+            #add each variable to the logconfig
             lg_stab.add_variable(key, lg_vars[key])
 
+        _dict = {}
         with SyncLogger(scf, lg_stab) as logger:
             endTime = time.time() + 10
-
             for log_entry in logger:
+                #package the data into a dictionary of arrays, send dict to other thread
                 uri = scf.cf.link_uri
                 timestamp = log_entry[0]
                 data = log_entry[1]
-                uri_dict = {'uri':uri}
-                # print(log_entry)
-                print(f'{uri}, {timestamp}, {data}')
-                # TODO package the data into a dictionary of arrays, send dict to other thread
-                # Do your stuff here
-                # call the function that updates the dictionary and sends the dictionary to the graph
-
-                self.new_data.emit(uri_dict)
+                _array = np.empty(0)
+                # turn the 6 log entries into a 1 x 6 np array
+                for key in data:
+                    #print(data[key])
+                    _array = np.concatenate((_array,[data[key]]))
+                _dict[uri] = _array
+                self.new_data.emit(_dict)
                 # the function passed in below is the one that triggers the timer.
                 QtCore.QTimer.singleShot(0,self.log_sync)
 
-                if time.time() > endTime or self._should_end == True:
+                if time.time() > endTime or self._should_end is True:
                     break
 
     def _process_marker_data(self, count, collected_data):
@@ -124,10 +126,11 @@ class DataSource(QtCore.QObject):
 
 def updatePlot(pos_dict):
     # TODO use uri_pos_dict to reference uri_mesh dict and update graph.
-    uri=pos_dict.get("uri")
-    print(uri_mesh_dict)
+    print(pos_dict)
 
 
+
+    #uri=pos_dict.get("uri")
     #m1.translate(pos_d[0], pos_d[1], pos_d[2])
     # sp1.setData(pos=pos)
 
